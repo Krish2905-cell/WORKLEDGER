@@ -1,6 +1,6 @@
 # Design.md — WORKLEDGER
 
-Visual and interaction design system. Built on Tailwind CSS + shadcn/ui. This is the reference for how screens described in AppFlow.md should actually look and behave.
+Visual and interaction design system. Built on Tailwind CSS + shadcn/ui. This is the reference for how screens described in AppFlow.md should actually look and behave. Tokens and component treatments below reflect the approved Final Design System (deep pine/ink teal, flat/bordered surfaces, data-dense layout) — not generic shadcn/Tailwind defaults.
 
 ## 1. Design Principles
 
@@ -8,96 +8,108 @@ Visual and interaction design system. Built on Tailwind CSS + shadcn/ui. This is
 - **Status at a glance.** Color and typography should let the user understand "am I okay?" in under 3 seconds on the Main Dashboard.
 - **Warnings are noticeable, not alarming.** The Overload Warning should stand out without feeling like an error state — it's a heads-up, not a failure.
 - **Dense where it helps, spacious where it matters.** Lists (tasks, invoices) can be compact; the dashboard's key numbers get room to breathe.
+- **Professional and editorial, not "AI SaaS."** Flat surfaces, borders over shadows, restrained color, strong typography — the product should read as a deliberately designed business tool, not a template dashboard. No gradients, no glassmorphism, no glow/pulse effects, no decorative illustrations.
 
-## 2. Color System
+## 2. Design Tokens (Color System)
 
-Using Tailwind's default palette + shadcn/ui theming tokens (CSS variables), so light/dark mode both work out of the box.
+Approved final palette — fixed set, no additional accent colors without a clear functional reason.
 
-| Token | Usage | Light | Dark |
-|---|---|---|---|
-| `background` | page background | white / `slate-50` | `slate-950` |
-| `foreground` | primary text | `slate-900` | `slate-50` |
-| `primary` | primary actions, active nav item | `indigo-600` | `indigo-500` |
-| `muted` | secondary text, borders | `slate-500` | `slate-400` |
-| `card` | card/panel backgrounds | white | `slate-900` |
-
-**Semantic colors** (status + alerts — kept consistent everywhere they appear):
-
-| Meaning | Color | Used for |
+| Token | Value | Usage |
 |---|---|---|
-| Planning | `slate-400` (neutral gray pill) | Project status pill |
-| Active | `blue-500` | Project status pill |
-| Completed | `green-500` | Project status pill |
-| Overdue / unpaid | `red-500` / `red-50` bg | Overdue task rows, unpaid invoice badges |
-| Paid | `green-600` | Paid invoice badge |
-| Warning (Overload) | `amber-500` / `amber-50` bg | Overload Warning banner only — reserve amber exclusively for this so it keeps its meaning |
+| `--background` | `#FAFAF8` | page background |
+| `--foreground` | `#14161A` | primary text |
+| `--muted` | `#6B7078` | secondary text, muted labels |
+| `--border` | `#E3E1DC` | dividers, card borders, table rules |
+| `--card` | `#FFFFFF` | card/panel backgrounds |
+| `--primary` | `#1F3D3A` | primary actions, active nav indicator, links |
+| `--status-overdue` | `#C23B22` | overdue tasks, unpaid invoice indicator |
+| `--status-paid` | `#2F6E4F` | paid invoices, active/healthy indicators |
+| `--status-warning` | `#8A6508` | Overload Warning only — reserved exclusively for this |
 
-Do not reuse amber/red for anything decorative — the moment the user sees red or amber anywhere in the app, it should mean "this needs attention."
+Project status (Planning / Active / Completed) uses `--muted`, `--primary`, and `--status-paid` respectively, expressed as text + left-border, not filled pills (see Section 5).
+
+No gradients anywhere. No color is reused decoratively — red, gold, and green each mean exactly one thing throughout the app.
 
 ## 3. Typography
 
-- **Font:** Inter (system-ui fallback) — comes free with Tailwind's default font stack, no extra loading needed.
+- **Headings / display:** Archivo, 600–700 weight.
+- **Body / UI text:** Inter.
+- **Financial / numeric data:** JetBrains Mono, used selectively — invoice amounts, dates, and counts where alignment and precision matter. Not used for general body text.
 - **Scale:**
-  - Page titles: `text-2xl font-semibold`
-  - Section headers (e.g. "Upcoming Deadlines"): `text-lg font-medium`
-  - Body / list items: `text-sm`
-  - Muted/secondary text (dates, client names under project names): `text-xs text-muted-foreground`
-- Numbers that matter (Total Unpaid, deadline counts) get `text-3xl font-bold tabular-nums` on the dashboard summary cards — these are the numbers a freelancer glances at first.
+  - Page titles: `text-2xl font-semibold` (Archivo)
+  - Section headers (e.g. "Upcoming Deadlines"): `text-lg font-medium` (Archivo)
+  - Body / list items: `text-sm` (Inter)
+  - Muted/secondary text (dates, client names under project names): `text-xs` (Inter), `var(--muted)`
+  - Financial figures (Total Unpaid, invoice amounts, task counts): `text-xl font-medium tabular-nums` (JetBrains Mono) — not oversized hero-stat treatment.
+
+No paid fonts. All three are freely available (Google Fonts / open license).
 
 ## 4. Layout
 
-- **Shell:** persistent left sidebar (desktop) with nav items, in fixed order — Dashboard, Clients, Projects, Tasks, Invoices, AI Assistant, Logout at the bottom. Collapses to a bottom tab bar or hamburger drawer on mobile.
+- **Shell:** persistent left sidebar (desktop), flat (no shadow, `1px solid var(--border)` right edge), with nav items in fixed order: Dashboard, Clients, Projects, Tasks, Invoices, AI Assistant, Logout. Collapses to a bottom tab bar or hamburger drawer on mobile.
+- **Spacing system:** strict 8px base unit — 4/8/16/24/32/48px only. No arbitrary padding values.
+- **Grid:** 12-column grid for dashboard and list layouts. Summary cards use `grid-cols-1 md:grid-cols-3 gap-4`, collapsing to 1 column on mobile.
 - **Max content width:** `max-w-6xl mx-auto` on main content area, so the app doesn't stretch uncomfortably wide on large monitors.
-- **Grid:** Dashboard summary cards use a 3-column grid (`grid-cols-1 md:grid-cols-3 gap-4`), collapsing to 1 column on mobile.
-- **Spacing rhythm:** sections separated by `space-y-6` / `space-y-8`; card internal padding `p-4` to `p-6`.
+- **Radius:** 4–6px consistently across all components — never `rounded-2xl`/`rounded-3xl`.
+- **Shadows:** none on static content (cards, rows, panels). Reserved only for true overlays — modals, dropdowns, popovers. Static hierarchy is communicated through borders, spacing, and dividers, not elevation.
 
 ## 5. Core Components (shadcn/ui primitives to use)
 
-| UI need | shadcn/ui component |
-|---|---|
-| Buttons | `Button` (variants: default, outline, destructive, ghost) |
-| Client/Project forms | `Dialog` (modal) or `Sheet` (slide-over) + `Input`, `Textarea`, `Select` |
-| Status pill | `Badge` (custom color per status via className) |
-| Project cards, dashboard summary cards | `Card` |
-| Task list rows | `Checkbox` + plain flex row, not a full DataTable (keeps it lightweight) |
-| Clients table | `Table` |
-| Confirm delete | `AlertDialog` |
-| AI Chat panel | `Sheet` (right-side slide-over) containing a scrollable message list + `Textarea`/`Input` + `Button` |
-| Toasts (save/delete confirmations) | `Sonner` or shadcn `Toast` |
-| Nav | custom sidebar using `Button` (ghost variant) + `lucide-react` icons |
+| UI need | shadcn/ui component | Treatment |
+|---|---|---|
+| Buttons | `Button` (variants: default, outline, destructive, ghost) | Flat fill or outline, 4–6px radius, no gradient |
+| Client/Project/Task/Invoice forms | `Dialog` (modal) or `Sheet` (slide-over) + `Input`, `Textarea`, `Select` (includes Project selector for reassigning tasks/invoices) | Flat, bordered, no shadow beyond the overlay itself |
+| Status indicator | `Badge`, `outline` variant | Text label + thin colored left border — not a solid filled pill |
+| Project cards, dashboard summary cards | `Card` | Flat: `1px solid var(--border)`, no shadow, 4–6px radius |
+| Task list rows | `Checkbox` + plain flex row, not a full DataTable (keeps it lightweight) | No per-task card wrapper — compact single-line rows |
+| Clients table, Invoices | `Table` | Table-first, not card-first — especially for Invoices (ledger-style, with a totals row) |
+| Confirm delete | `AlertDialog` | — |
+| AI Assistant panel | `Sheet` (right-side slide-over) containing a scrollable message list + `Textarea`/`Input` + `Button` | Rectangular message containers (4–6px radius, not full pill bubbles), styled identically to the rest of the app |
+| Toasts (save/delete confirmations) | `Sonner` or shadcn `Toast` | Flat, bordered, no glow |
+| Nav | custom sidebar using `Button` (ghost variant) + `lucide-react` icons | Active state = left-border accent in `--primary` + bold text, not a filled/glowing pill |
 
 ## 6. Key Screen Patterns
 
 ### Dashboard summary cards
-Three `Card` components in a row, each with: small muted label on top ("Active Projects"), big bold number below, optional small icon top-right (lucide-react: `Briefcase`, `Clock`, `DollarSign`).
+Exactly three flat, bordered `Card` components in a row (`1px solid var(--border)`, no shadow, 4–6px radius):
+1. **Active Projects**: small muted label on top ("Active Projects", Inter), count below in JetBrains Mono (`text-xl font-medium tabular-nums`), `Briefcase` outline icon top-right.
+2. **Upcoming Deadlines**: small muted label on top ("Upcoming Deadlines"), count (incomplete tasks due today through today + 7 days) in JetBrains Mono, `Clock` outline icon top-right. Overdue tasks are not a 4th card; they are pinned to the top of the Upcoming Deadlines list, flagged in `--status-overdue` text (not a filled background).
+3. **Total Unpaid**: small muted label on top ("Total Unpaid"), formatted INR currency (`₹`) in JetBrains Mono, `DollarSign` (or Indian Rupee) outline icon top-right.
+
+None of the three cards use oversized hero-stat styling — figures stay at the restrained `text-xl font-medium tabular-nums` scale defined in Section 3.
 
 ### Overload Warning banner
-Full-width banner directly under the page header, `bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-4`, with a small warning icon (`TriangleAlert` from lucide-react) and a one-line message. Dismissible for the session (not permanently) via a small "×" — reappears next login if the condition still holds.
+Bordered notice bar, no background fill: `border-left: 4px solid var(--status-warning)`, with a small warning icon (`TriangleAlert`, outline style, lucide-react) and a one-line message in Inter (triggered by ≥3 incomplete tasks across ≥2 distinct `Active` projects due within today, today + 1, or today + 2; overdue tasks excluded). Dismissible for the session (not permanently) via a small "×" — reappears next login if the condition still holds.
 
 ### Project status pipeline (Projects Dashboard)
-Three columns (Planning / Active / Completed) as a simple responsive layout — `grid-cols-1 md:grid-cols-3` — each column a vertical stack of project `Card`s. Full drag-and-drop is a nice-to-have, not required for v1; a status `Select` dropdown on each card is an acceptable and simpler alternative.
+Three columns (Planning / Active / Completed) as a simple responsive layout — `grid-cols-1 md:grid-cols-3` — each column a vertical stack of flat, bordered project `Card`s (no shadow). A status `Select` dropdown on each card is used for v1 to keep interactions simple and dependable without requiring a drag-and-drop library.
 
 ### Task rows
-Compact flex row: `Checkbox` — title (strikethrough + muted when done) — due date (right-aligned, red text if overdue) — row actions (edit/delete icons, shown on hover on desktop, always visible on mobile).
+Compact flex row, no card wrapper: `Checkbox` — title (strikethrough + muted when done, Inter) — due date (right-aligned, `--status-overdue` if overdue, JetBrains Mono) — row actions (edit/delete icons, outline style). Editing opens a dialog allowing changes to title, due date, and **Project reassignment** (via `Select` dropdown of user's projects).
 
-### Invoice rows
-Similar compact row: amount (bold) — date — `Badge` for Paid (green) / Unpaid (red, clickable to toggle) — row actions.
+### Invoices — table-first
+A `Table`, not a card or row list: columns for amount (JetBrains Mono, right-aligned), date, project, paid/unpaid status (`Badge`, outline variant, left-border colored — paid in `--status-paid`, unpaid in `--status-overdue`, clickable to toggle), row actions. A totals row at the bottom styled like a ledger close-out (`border-top: 2px solid var(--foreground)`, bold JetBrains Mono total). This applies to both the inline Project Detail invoices section and the global Invoices screen. Editing opens a dialog allowing changes to amount, date, paid status, and **Project reassignment** (via `Select` dropdown of user's projects).
 
-### AI Chat panel
-Right-side `Sheet`, ~400px wide on desktop, full-screen on mobile. Message bubbles: user messages right-aligned with `bg-primary text-primary-foreground`, assistant messages left-aligned with `bg-muted`. Suggested-question chips shown as small `Button` (outline, size sm) above the input when the conversation is empty.
+### AI Assistant panel
+Right-side `Sheet`, ~400px wide on desktop, full-screen on mobile, containing a scrollable message list + `Textarea`/`Input` + `Button`. Message containers are rectangular (4–6px radius, `1px solid var(--border)`), not pill-shaped bubbles. User and assistant messages are both styled with WorkLedger's own palette (`--primary` for user messages, `--card`/`--border` for assistant messages) — no purple, no gradient, no sparkle or magic-wand iconography anywhere in this panel. Suggested-question chips are outline `Button`s (size sm) matching the rest of the app's button style, shown above the input when the conversation is empty. The panel should read as a feature *of* WorkLedger, not a bolted-on third-party AI widget.
 
 ## 7. Empty States
 
-Consistent pattern across Clients, Projects, Tasks, Invoices: centered icon (muted, large, lucide-react) + one-line message + a single primary `Button` to create the first item. No illustrations/graphics needed — keep it simple and on-brand with the rest of the app's restraint.
+Consistent pattern across Clients, Projects, Tasks, Invoices: centered outline icon (muted, lucide-react) + one-line message (Inter) + a single primary `Button` to create the first item. No illustrations/graphics needed — keep it simple and on-brand with the rest of the app's restraint.
 
 ## 8. Responsive Behavior
 
 - Breakpoint strategy: mobile-first, `md:` (768px) as the primary breakpoint where sidebar nav appears and multi-column grids activate.
-- Tables (Clients list) collapse to stacked cards below `md`.
-- AI Chat `Sheet` goes full-screen below `md`.
+- Tables (Clients list, Invoices) collapse to stacked bordered rows below `md`.
+- AI Assistant `Sheet` goes full-screen below `md`.
 
-## 9. Accessibility Notes
+## 9. Motion
 
-- All status color coding (Badge, banner) must pair color with text/icon, never color alone (already satisfied by the patterns above).
+Minimal and functional only: 150–200ms ease transitions on hover, focus, and toggle state changes. No entrance animations, no scroll-triggered reveals, no hover-lift on static cards, no pulsing or glowing effects anywhere in the app.
+
+## 10. Accessibility Notes
+
+- All status color coding (Badge, banner) must pair color with text/icon, never color alone.
+- The approved palette (`--primary` `#1F3D3A` on `--background` `#FAFAF8`, `--foreground` `#14161A` on `--card` `#FFFFFF`, and all three status colors) must be verified at implementation time to meet 4.5:1+ contrast against their respective backgrounds before shipping — the earlier Tailwind-default palette met this bar, and the new palette must be checked against the same standard rather than assumed.
 - Interactive elements (Checkbox, Badge toggles) need visible focus states — shadcn/ui's defaults handle this; don't override focus rings.
 - Form inputs always have associated `Label` components, not placeholder-only labeling.

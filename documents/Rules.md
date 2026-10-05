@@ -47,19 +47,21 @@ Project with linked invoices  → deletion BLOCKED
 
 * No cascade deletes, anywhere, ever, in v1.
 * Deleting a client or project must never silently delete its children.
-* The UI must guide the user to remove/reassign children first — never delete-and-hope.
+* The UI must guide the user to remove or reassign children first — never delete-and-hope.
+* Tasks and invoices may be reassigned to another project belonging to the same user during an edit. Reassigning to another user's project is strictly prohibited.
 
 ---
 
 ## 5. Dashboard Numbers
 
+The dashboard features exactly 3 summary cards:
 ```text
-Active Projects   = projects where status = Active
-Upcoming Tasks    = incomplete tasks due within 7 days
-Overdue Tasks     = incomplete tasks where due_date < today
-Total Unpaid      = SUM(amount) where invoice status = Unpaid
+Active Projects     = projects where status = Active
+Upcoming Deadlines  = incomplete tasks where due_date >= today AND due_date <= today + 7
+Total Unpaid        = SUM(amount) where invoice status = Unpaid (is_paid = false)
 ```
 
+* **Overdue Tasks** = incomplete tasks where `due_date < today`. These are pinned to the top of the Upcoming Deadlines list in red, not counted on a fourth summary card.
 * Always computed live from Supabase queries.
 * Never cached, never stored, never stale-on-purpose.
 
@@ -74,9 +76,11 @@ incomplete tasks >= 3
 AND
 those tasks span >= 2 distinct ACTIVE projects
 AND
-all fall within the same rolling 3-day window
+all fall within the rolling 3-day window:
+  today, today + 1 day, and today + 2 days (today <= due_date <= today + 2 days)
 ```
 
+* Overdue tasks from before today (`due_date < today`) do **NOT** count toward the trigger.
 * Do not loosen this to "any project status" — Planning/Completed projects never count toward the trigger.
 * Computed client-side from data already fetched for the dashboard.
 * Must never block task creation, block project creation, change project status, or modify data. Informational only.
@@ -91,6 +95,7 @@ all fall within the same rolling 3-day window
 * Use foreign keys for every relationship.
 * All foreign keys use `ON DELETE RESTRICT` — never `CASCADE`.
 * `tasks` and `invoices` have no `user_id` column — ownership is checked by joining through `projects.user_id`.
+* Reassignment of a task or invoice must verify that the target `project_id` also belongs to `auth.uid()`.
 * Row Level Security is enabled on every table and is the primary ownership-check mechanism — not a backup to application code.
 
 ---
@@ -98,7 +103,8 @@ all fall within the same rolling 3-day window
 ## 8. Backend (Edge Functions only)
 
 * Frontend never connects directly to PostgreSQL — only through the Supabase client, which enforces RLS.
-* `/api/ai/ask` and `/api/reminders/run` must verify the user's session before doing anything else.
+* `/api/ai/ask` must verify the user's active session before doing anything else.
+* `/api/reminders/run` is a scheduled background task authenticated via a `CRON_SECRET` header (does not require a logged-in user session) and may use the Supabase Service Role key server-side.
 * Never trust frontend validation alone — Edge Functions must not assume the caller already checked inputs.
 * Business logic for AI context-building and reminder filtering belongs inside the Edge Function, not scattered across the frontend.
 * Never expose database errors, stack traces, or secrets to the client.
@@ -131,11 +137,12 @@ Answer
 
 ## 10. Email Reminders
 
-* Only `/api/reminders/run` may send email — no other code path calls Resend/SendGrid.
+* Only `/api/reminders/run` may send email via **Resend** — no other code path calls an email provider.
+* Scheduled daily via **Supabase pg_cron** with a pre-shared `CRON_SECRET` header.
 * Query: incomplete tasks where `due_date <= today + 2 days` (this naturally includes overdue tasks — no separate overdue branch needed).
 * Skip the user entirely if nothing qualifies that day.
 * One summary email per user per day — never one email per task.
-* Email credentials live only in that function's environment.
+* Email credentials and `CRON_SECRET` live only in that function's environment.
 
 ---
 
@@ -156,9 +163,9 @@ Answer
 * Passwords are never stored or handled manually — Supabase Auth owns credential storage.
 * Never commit secrets or `.env`.
 * Only `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` may appear in frontend-accessible env vars.
-* `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `ANTHROPIC_API_KEY` are server-side only, inside Edge Functions.
+* `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `ANTHROPIC_API_KEY`, and `CRON_SECRET` are server-side only, inside Edge Functions.
 * Validate ownership at the database layer (RLS), not just in application code.
-* Never expose database credentials or the service-role key to the frontend.
+* Never expose database credentials, `CRON_SECRET`, or the service-role key to the frontend.
 * One user's data must never enter another user's AI context.
 
 ---

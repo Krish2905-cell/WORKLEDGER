@@ -23,7 +23,7 @@ flowchart TD
     T -.->|same underlying data| H
     V -.->|same underlying data| I
     D -->|deadline cluster detected| J[Overload Warning Banner]
-    K[Scheduled Cron Job] -.->|daily, out of band| L[Reminder Email to User]
+    K[Supabase pg_cron Job] -.->|daily with CRON_SECRET| L[Reminder Email via Resend]
 ```
 
 ## 2. Auth Flow
@@ -42,13 +42,13 @@ flowchart TD
 
 The landing page after login. Shows, top to bottom:
 
-1. **Overload Warning banner** (only rendered if a cluster is detected) — e.g. "⚠ 4 tasks due within 3 days across 3 projects." Clicking it scrolls to / filters the Upcoming Deadlines section.
-2. **Summary cards** (3 across on desktop, stacked on mobile):
-   - Active Projects (count)
-   - Upcoming Deadlines (count, next 7 days)
-   - Total Unpaid (sum, currency-formatted)
+1. **Overload Warning banner** (only rendered if a cluster is detected: $\ge 3$ incomplete tasks due within the rolling 3-day window `today` through `today + 2 days` across $\ge 2$ distinct `Active` projects; overdue tasks excluded) — e.g. "⚠ 4 tasks due within 3 days across 3 active projects." Clicking it scrolls to / filters the Upcoming Deadlines section. Dismissible for the session via "×".
+2. **Summary cards** (exactly 3 across on desktop, stacked on mobile):
+   - **Active Projects** (count of projects where status = Active)
+   - **Upcoming Deadlines** (count of incomplete tasks due from today through today + 7 days)
+   - **Total Unpaid** (sum of unpaid invoices, INR currency-formatted)
 3. **Active Projects list** — compact cards/rows: project name, client name, status pill, task progress (e.g. "3/7 done"), unpaid amount for that project. Clicking a project → Project Detail.
-4. **Upcoming Deadlines list** — flat list of tasks due in next 7 days, sorted soonest first, each showing task title, due date, and parent project name (clickable → Project Detail). Overdue tasks (past due, not done) are visually distinct (e.g. red) and shown at the top regardless of the 7-day window.
+4. **Upcoming Deadlines list** — flat list of incomplete tasks due in next 7 days, sorted soonest first, each showing task title, due date, and parent project name (clickable → Project Detail). Overdue tasks (due before today, not done) are visually distinct (red) and pinned to the top of the list, rather than forming a separate summary card.
 5. **Persistent nav** (sidebar or top bar) present on every authenticated screen, in fixed order: Dashboard, Clients, Projects, Tasks, Invoices, AI Assistant, Logout.
 6. **AI Assistant entry point** — a nav item that opens the chat assistant (see Section 7).
 
@@ -61,9 +61,9 @@ The landing page after login. Shows, top to bottom:
 
 ## 5. Projects (`/projects`)
 
-1. **Projects Dashboard** — all projects, grouped or filterable by status column (Planning / Active / Completed) — a simple kanban-style or filtered-list view (implementation choice left to Design.md). "Add Project" button.
+1. **Projects Dashboard** — all projects, grouped or filterable by status column (Planning / Active / Completed) — a simple 3-column view with a status dropdown on each card (per Design.md). "Add Project" button.
 2. **Add/Edit Project** — form: name (required), client (dropdown, required), status (dropdown, defaults to Planning). Save → appears in the pipeline at the correct status.
-3. **Change status** — from the dashboard (e.g. drag between columns, or a status dropdown on the card) — Planning → Active → Completed. No forced order enforcement beyond the three defined states; user can move freely between any of the three.
+3. **Change status** — from the dashboard (via status dropdown on the card) — Planning → Active → Completed. User can move freely between any of the three states.
 4. **Project Detail** (`/projects/:id`) — the hub screen for one project:
    - Header: project name, client (link to Client Detail), status control, Edit/Delete project actions.
    - **Tasks section**: list of tasks (title, due date, done checkbox), "Add Task" inline form. Overdue/undone tasks visually flagged.
@@ -77,18 +77,19 @@ Tasks and invoices are each manageable in two places, both reading/writing the s
 **Inline on Project Detail** (scoped to one project):
 - Add task: title + due date → appears in the project's task list.
 - Toggle done/not done: single click/checkbox, updates immediately (optimistic UI acceptable).
-- Edit/delete task: via row actions (pencil/trash icon) on each task row.
-- Add/edit/delete invoice the same way, in the Invoices section of Project Detail.
+- Edit task: dialog/form allowing updates to title, due date, and **Project reassignment** (dropdown populated with the current user's projects). This allows tasks to be moved to another project before deleting the parent project. Reassigning to another user's project is blocked.
+- Delete task: trash icon on task row.
+- Add/edit/delete invoice the same way: Invoices section of Project Detail. Editing an invoice includes amount, date, paid status, and **Project reassignment** (dropdown of user's projects).
 
 **Global Tasks screen** (`/tasks`, cross-project):
 - Flat list of every task across every project, with the parent project name shown per row (clickable → Project Detail).
 - Filter/sort by due date, done/not done, and project.
-- Same add/toggle/edit/delete actions as the inline version — a change made here is immediately reflected inline on that task's Project Detail, and vice versa, since both read/write the same `tasks` table.
+- Same add/toggle/edit/delete actions as the inline version (including Project dropdown on edit).
 
 **Global Invoices screen** (`/invoices`, cross-project):
 - Flat list of every invoice across every project, with the parent project name shown per row (clickable → Project Detail).
 - Filter/sort by paid/unpaid status and date.
-- Same add/toggle/edit/delete actions as the inline version, same underlying data as above.
+- Same add/toggle/edit/delete actions as the inline version (including Project dropdown on edit).
 
 Tasks feed the Main Dashboard's "Upcoming Deadlines" and the Overload Warning logic regardless of which screen was used to create/edit them.
 
@@ -96,18 +97,20 @@ Tasks feed the Main Dashboard's "Upcoming Deadlines" and the Overload Warning lo
 
 1. Opens as a **slide-over panel or modal** (not a full page navigation) so the user can ask a question without losing their place — accessible from any authenticated screen via nav item or floating button.
 2. Simple chat UI: message history (user + assistant turns), text input, "Send" button.
-3. On send: frontend sends the question to the backend; backend fetches the current user's Client/Project/Task/Invoice data from Supabase, packages it as context, and calls the Claude API; response streams or returns and is rendered in the chat panel.
+3. On send: frontend sends the question to `/api/ai/ask`; backend verifies user session, fetches the current user's data from Supabase, packages it as context, and calls the Claude API; returns answer and renders in the chat panel.
 4. Assistant answers only — no buttons to create/edit records from chat in v1.
-5. Chat history does not need to persist across sessions in v1 (in-memory for the session is sufficient); persisting it is an acceptable stretch goal, not a requirement.
+5. Chat history does not need to persist across sessions in v1 (in-memory for the session is sufficient).
 6. Empty state: a few suggested example questions shown before the user's first message (e.g. "How much am I owed?", "What's due this week?").
 
 ## 8. Automated Email Reminders (no UI screen — background flow)
 
-1. A scheduled cron job runs daily (time TBD in TechSpec.md/ImplementationPlan.md).
-2. For the single user, it queries tasks with due_date within the next N days (default 2) where is_done = false.
-3. If the result set is non-empty, it sends one summary email (via Resend/SendGrid) listing each task, its due date, and its project name.
-4. If the result set is empty, no email is sent that day.
-5. This flow has no in-app screen; it is entirely automated and delivered outside the app (to the user's inbox).
+1. A scheduled cron job runs daily via **Supabase pg_cron**.
+2. Trigger calls `/api/reminders/run` with a secret **`CRON_SECRET`** header (no user session required).
+3. The function uses the Supabase Service Role key server-side to query users across the system.
+4. For each user, it queries incomplete tasks with `due_date <= today + 2 days` (which naturally includes overdue tasks) where `is_done = false`.
+5. If the result set is non-empty, it sends one summary email per user via **Resend** listing each task, its due date, and its project name.
+6. If the result set is empty, no email is sent that day.
+7. This flow has no in-app screen; it is entirely automated and delivered outside the app to the user's inbox.
 
 ## 9. Error / Empty States (applies across screens)
 

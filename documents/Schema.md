@@ -1,8 +1,8 @@
 # WorkLedger — Database Schema
 
-**Version:** 1.1
-**Status:** Aligned to TRD v1.1
-**Related:** PRD.md, TechSpec.md (both currently hold TRD content — see Tracker.md Open Issues)
+**Version:** 1.2
+**Status:** Aligned to v1 specifications
+**Related:** PRD.md, TechSpec.md
 
 ## 1. Database
 
@@ -10,7 +10,7 @@
 
 WorkLedger is a single-user-per-account application. Each freelancer has their own login, but there is no shared/multi-role data — every record belongs to exactly one user. Authentication and the `users` table are handled entirely by Supabase Auth (`auth.users`); no custom `users` table is defined here.
 
-All standard CRUD reaches these tables directly from the frontend via the Supabase client library — there is no hand-written Express/ORM layer. Ownership is enforced by Row Level Security (RLS), not application code (per TRD Section 4).
+All standard CRUD reaches these tables directly from the frontend via the Supabase client library — there is no hand-written Express/ORM layer. Ownership is enforced by Row Level Security (RLS), not application code (per TechSpec Section 4).
 
 ---
 
@@ -193,7 +193,7 @@ A task or invoice always belongs to exactly one project. A project always belong
 
 ---
 
-# 8. Derived Values (not stored — computed live on every read, per TRD Section 6)
+# 8. Derived Values (not stored — computed live on every read, per TechSpec Section 6)
 
 Active Projects:
 
@@ -201,14 +201,15 @@ Active Projects:
 projects WHERE status = 'Active' AND user_id = <current user>
 ```
 
-Upcoming Tasks (Dashboard, next 7 days):
+Upcoming Deadlines (Dashboard summary card, next 7 days):
 
 ```text
 tasks WHERE is_done = false
+   AND due_date >= current_date
    AND due_date <= current_date + 7
 ```
 
-Overdue Tasks:
+Overdue Tasks (List indicator pinned to top of deadlines, not a 4th summary card):
 
 ```text
 tasks WHERE is_done = false
@@ -223,17 +224,19 @@ SUM(invoices.amount) WHERE invoices.is_paid = false
    [AND project.user_id = <current user>]       -- dashboard-wide view
 ```
 
-Overload Warning (per TRD Section 7 — exact condition):
+Overload Warning (per TechSpec Section 7 — exact condition):
 
 ```text
 incomplete tasks >= 3
 AND those tasks span >= 2 distinct Active projects
-AND all fall within the same rolling 3-day window
+AND all fall within the rolling 3-day window:
+    current_date, current_date + 1, current_date + 2
+    (tasks with due_date < current_date do NOT count toward this calculation)
 ```
 
 Computed client-side from data already fetched for the dashboard, or in a lightweight Supabase view/function — not a separate backend service, and never a stored/cached flag.
 
-All of the above are always computed from live queries at request time — never cached — per TRD Section 6, to avoid stale dashboard data.
+All of the above are always computed from live queries at request time — never cached — per TechSpec Section 6, to avoid stale dashboard data.
 
 ---
 
@@ -245,7 +248,7 @@ All of the above are always computed from live queries at request time — never
 invoices.amount > 0
 ```
 
-Stored as `NUMERIC(10,2)`, fixed currency INR for v1 (per TRD Section 5 — no per-invoice currency selection).
+Stored as `NUMERIC(10,2)`, fixed currency INR for v1 (per TechSpec Section 5 — no per-invoice currency selection).
 
 ### Status
 
@@ -270,15 +273,15 @@ A client cannot be deleted while it still has projects.
 (client_id FK uses ON DELETE RESTRICT)
 ```
 
-### Project Deletion
+### Project Deletion & Task/Invoice Reassignment
 
 ```text
 A project cannot be deleted while it still has tasks or invoices.
-NO CASCADE DELETES in v1 (per TRD Section 5).
+NO CASCADE DELETES in v1 (per TechSpec Section 5).
 (project_id FK on tasks and invoices uses ON DELETE RESTRICT, not CASCADE)
 ```
 
-This is a deliberate change from an earlier draft of this schema, which used `ON DELETE CASCADE` — the TRD explicitly rules that out to avoid silently destroying task/invoice history when a project is removed. The UI must guide the user to delete/reassign a project's tasks and invoices first.
+This prevents silently destroying task/invoice history when a project is removed. The UI guides the user to delete or reassign a project's tasks and invoices first. Editing a task or invoice permits updating `project_id` to another project owned by the same user (`projects.user_id = auth.uid()`). Reassigning to another user's project is strictly prohibited.
 
 ### Foreign Keys
 
@@ -286,7 +289,7 @@ Projects, tasks, and invoices must reference existing, non-deleted parent record
 
 ### Row Level Security
 
-Every table (`clients`, `projects`, `tasks`, `invoices`) has RLS enabled and is the **primary** ownership-enforcement mechanism (per TRD Section 4 and 10) — not a backup to application-level checks. `tasks` and `invoices` don't store `user_id` directly; ownership is checked by joining through `projects.user_id = auth.uid()`. A query for another user's data returns nothing, regardless of what the frontend requests.
+Every table (`clients`, `projects`, `tasks`, `invoices`) has RLS enabled and is the **primary** ownership-enforcement mechanism (per TechSpec Section 4 and 10) — not a backup to application-level checks. `tasks` and `invoices` don't store `user_id` directly; ownership is checked by joining through `projects.user_id = auth.uid()`. When updating `project_id` on a task or invoice, RLS policies verify that the new `project_id` also belongs to `auth.uid()`. A query for another user's data returns nothing, regardless of what the frontend requests.
 
 ---
 
@@ -324,13 +327,13 @@ Send final invoice        → Website Redesign   → due 2026-09-30 → not done
 
 # 11. Source of Truth
 
-Tasks and invoices are the source of truth for deadlines and billing status. Dashboard numbers (Active Projects, Upcoming Tasks, Overdue Tasks, Total Unpaid) and the Overload Warning are always derived live from these tables — nothing is cached or duplicated (per TRD Section 6). If a cached/materialized value is introduced later for performance, it must remain fully recomputable from the underlying records.
+Tasks and invoices are the source of truth for deadlines and billing status. Dashboard numbers (Active Projects, Upcoming Deadlines, Total Unpaid) and the Overload Warning are always derived live from these tables — nothing is cached or duplicated (per TechSpec Section 6). If a cached/materialized value is introduced later for performance, it must remain fully recomputable from the underlying records.
 
 ---
 
 # 12. Future Expansion
 
-The schema can later be extended with, per TRD Section 16:
+The schema can later be extended with, per TechSpec Section 16:
 
 ```text
 Data export/import

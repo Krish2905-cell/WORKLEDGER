@@ -1,0 +1,141 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* WorkLedger fonts — Archivo (headings), Inter (body/UI), JetBrains Mono (numeric) */
+@import "@fontsource-variable/archivo";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* Font families */
+  --font-heading: 'Archivo Variable', sans-serif;
+  --font-sans: 'Inter Variable', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', monospace;
+
+  /* Map CSS vars → Tailwind color utilities */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Sidebar tokens */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Status colors — each reserved for exactly one meaning */
+  --color-status-overdue: var(--status-overdue);
+  --color-status-paid: var(--status-paid);
+  --color-status-warning: var(--status-warning);
+
+  /* Radius scale — 4–6px max, never 2xl/3xl */
+  --radius-sm: calc(var(--radius) * 0.67);  /* ~4px */
+  --radius-md: var(--radius);               /* 6px */
+  --radius-lg: var(--radius);               /* 6px — no larger */
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+}
+
+/* ─── Light mode tokens (Design.md approved palette) ─────────────────────── */
+:root {
+  /* Core palette */
+  --background: #FAFAF8;
+  --foreground: #14161A;
+  --card: #FFFFFF;
+  --card-foreground: #14161A;
+  --popover: #FFFFFF;
+  --popover-foreground: #14161A;
+
+  /* Primary: deep pine / ink teal */
+  --primary: #1F3D3A;
+  --primary-foreground: #FAFAF8;
+
+  /* Secondary: subtle warm gray */
+  --secondary: #F0EFEC;
+  --secondary-foreground: #14161A;
+
+  /* Muted: secondary text, muted labels */
+  --muted: #F0EFEC;
+  --muted-foreground: #6B7078;
+
+  /* Accent: same as secondary for shadcn compatibility */
+  --accent: #F0EFEC;
+  --accent-foreground: #14161A;
+
+  /* Destructive: maps to overdue red for shadcn compatibility */
+  --destructive: #C23B22;
+
+  /* Structural */
+  --border: #E3E1DC;
+  --input: #E3E1DC;
+  --ring: #1F3D3A;
+
+  /* Radius: 6px — Design.md says 4–6px, never 2xl/3xl */
+  --radius: 0.375rem;
+
+  /* Status colors — reserved, never repurposed decoratively */
+  --status-overdue: #C23B22;
+  --status-paid: #2F6E4F;
+  --status-warning: #8A6508;
+
+  /* Sidebar (matches main palette — flat, no elevation) */
+  --sidebar: #FAFAF8;
+  --sidebar-foreground: #14161A;
+  --sidebar-primary: #1F3D3A;
+  --sidebar-primary-foreground: #FAFAF8;
+  --sidebar-accent: #F0EFEC;
+  --sidebar-accent-foreground: #14161A;
+  --sidebar-border: #E3E1DC;
+  --sidebar-ring: #1F3D3A;
+}
+
+/* ─── Base layer ─────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    /* Disable all font-smoothing adjustments — let the fonts render naturally */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html {
+    @apply font-sans;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+
+  /* Subtle transition on interactive elements — 150ms as per Design.md §9 */
+  button, a, input, textarea, select {
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+  }
+}

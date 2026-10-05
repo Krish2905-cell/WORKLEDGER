@@ -1,8 +1,8 @@
-# WORKLEDGER — TRD
+# WORKLEDGER — Technical Specification (TechSpec)
 
-**Version:** 1.1
+**Version:** 1.2
 **Status:** Finalized for v1 build
-**Related:** PRD.md, TechSpec.md
+**Related:** PRD.md, Schema.md, AppFlow.md
 
 ## 1. Stack
 
@@ -11,8 +11,9 @@ Frontend        React + JavaScript + Vite
 Styling         Tailwind CSS
 UI              shadcn/ui
 Backend/DB/Auth Supabase (PostgreSQL + Auth + Row Level Security)
-Serverless      Supabase Edge Functions (or Vercel Functions) — AI + Email only
-Email           Resend or SendGrid
+Serverless      Supabase Edge Functions — AI + Email only
+Email           Resend
+Scheduler       Supabase pg_cron
 AI              Anthropic Claude API
 Testing         Vitest
 Versioning      Git + GitHub
@@ -31,10 +32,10 @@ React Frontend
       |-- Supabase client library (direct calls) --> Supabase (Postgres + Auth + RLS)
       |         used for: all Client / Project / Task / Invoice CRUD
       |
-      |-- HTTPS calls --> Serverless Functions
+      |-- HTTPS calls --> Serverless Edge Functions
                 |
-                |-- /api/ai/ask         --> Anthropic Claude API
-                |-- /api/reminders/run  --> Resend/SendGrid (daily cron trigger)
+                |-- /api/ai/ask         --> Anthropic Claude API (session verified)
+                |-- /api/reminders/run  --> Resend (daily pg_cron trigger with CRON_SECRET)
 ```
 
 External services:
@@ -42,11 +43,11 @@ External services:
 ```text
 Supabase Auth   → Authentication
 Supabase RLS    → Per-user data isolation (replaces manual ownership checks in app code)
-Resend/SendGrid → Email reminders
+Resend          → Email reminders
 Claude API      → AI assistant
 ```
 
-Frontend never holds the Anthropic or email API keys — those exist only inside the serverless functions. Frontend never connects to PostgreSQL directly, only through Supabase's client library, which itself enforces RLS.
+Frontend never holds the Anthropic, Resend, or CRON_SECRET API keys — those exist only inside the serverless functions. Frontend never connects to PostgreSQL directly, only through Supabase's client library, which itself enforces RLS.
 
 ---
 
@@ -63,11 +64,9 @@ Invoice
 Relationships:
 
 ```text
-User
+User (auth.users)
  ├── Clients
- ├── Projects
- ├── Tasks
- └── Invoices
+ └── Projects
 
 Client
  └── Projects
@@ -83,13 +82,17 @@ Detailed table definitions live in Schema.md.
 
 ## 4. Data Ownership
 
-Every table contains a `user_id` column referencing `auth.users`.
+`clients` and `projects` tables contain a `user_id` column referencing `auth.users`.
+
+`tasks` and `invoices` tables do **not** have a `user_id` column. Their user ownership is established strictly through their parent project:
+* `tasks.project_id -> projects.user_id`
+* `invoices.project_id -> projects.user_id`
 
 ```text
 User → Client → Project → Task / Invoice
 ```
 
-Ownership is enforced primarily through **Supabase Row Level Security policies** (database-level), not hand-written backend checks — a query for another user's data simply returns nothing, regardless of what the frontend requests. Serverless functions (AI, email) additionally verify the authenticated session before fetching any data.
+Ownership is enforced primarily through **Supabase Row Level Security policies** (database-level), not hand-written backend checks — a query for another user's data simply returns nothing, regardless of what the frontend requests. For `tasks` and `invoices`, RLS policies join to `projects` to verify that `projects.user_id = auth.uid()`.
 
 Users can access only their own:
 
@@ -108,11 +111,12 @@ Users can access only their own:
 * Every project must belong to a client.
 * Every task must belong to a project.
 * Every invoice must belong to a project.
+* When editing a task or invoice, reassignment to another project owned by the authenticated user is allowed via a project dropdown. Reassignment to another user's project is strictly prohibited.
 * Task due dates are required and must be valid dates.
 * Invoice amounts must be positive.
 * Invoice status can be `Paid` or `Unpaid`.
 * A client with linked projects cannot be deleted.
-* A project with linked tasks or invoices cannot be deleted (no cascade deletes in v1).
+* A project with linked tasks or invoices cannot be deleted (no cascade deletes in v1; tasks/invoices can be deleted or reassigned to another project first).
 * Completed tasks must not be counted as incomplete.
 * Completed projects should not be counted as active.
 * Financial totals must be calculated from invoice records, not cached values.
@@ -123,19 +127,12 @@ Users can access only their own:
 
 ## 6. Dashboard Logic
 
-```text
-Active Projects
-= Projects where status = Active
+The dashboard features exactly 3 summary cards:
+1. **Active Projects** = Projects where status = Active
+2. **Upcoming Deadlines** = Incomplete tasks (`is_done = false`) due from today through today + 7 days (`today <= due_date <= today + 7 days`)
+3. **Total Unpaid Amount** = SUM(amount where invoice status = Unpaid)
 
-Upcoming Tasks
-= Incomplete tasks due within the next 7 days
-
-Overdue Tasks
-= Incomplete tasks where due date is before today
-
-Total Unpaid Amount
-= SUM(amount where invoice status = Unpaid)
-```
+**Overdue Tasks** = Incomplete tasks where due date is before today (`due_date < today`). These are highlighted and pinned to the top of the upcoming list in red, rather than forming a 4th summary card.
 
 All dashboard values are computed from live queries (via the Supabase client) at request time — never cached — to avoid stale data.
 
@@ -150,10 +147,15 @@ Incomplete tasks >= 3
 AND
 Active projects >= 2 (tasks spread across them)
 AND
-Tasks due within a rolling 3-day window
+Tasks due within a rolling 3-day window:
+  today, today + 1 day, and today + 2 days (today <= due_date <= today + 2 days)
 ```
 
-Computed client-side (or in a lightweight Supabase view/function) from data already fetched for the dashboard — no separate backend service needed.
+Rules:
+* Only incomplete tasks (`is_done = false`) are considered.
+* Tasks must belong to at least 2 distinct `Active` projects. Tasks in `Planning` or `Completed` projects do not count.
+* Overdue tasks from before today (`due_date < today`) do **NOT** count toward the overload calculation.
+* Computed client-side from data already fetched for the dashboard — no separate backend service needed.
 
 It must not:
 
@@ -166,15 +168,16 @@ It must not:
 
 ## 8. Email Reminders
 
-A scheduled **serverless function** (triggered by Supabase pg_cron or Vercel Cron) runs once daily at a fixed time.
+A scheduled **serverless function** (triggered by Supabase pg_cron) runs once daily at a fixed time.
 
 It will:
 
-* Query, per user, incomplete tasks with `due_date <= today + 2 days` (this naturally includes overdue tasks).
+* Authenticate via a pre-shared **`CRON_SECRET`** header provided by pg_cron (does **not** require a logged-in user session).
+* Query, per user via the Supabase Service Role key, incomplete tasks with `due_date <= today + 2 days` (this naturally includes overdue tasks).
 * Skip the user if no relevant tasks exist.
-* Otherwise build one summary email (task title, project name, due date) and send it via Resend/SendGrid.
+* Otherwise build one summary email (task title, project name, due date) and send it via **Resend**.
 
-Email credentials (`RESEND_API_KEY` or equivalent) live only inside the serverless function's environment — never in frontend code.
+Email credentials (`RESEND_API_KEY`), `CRON_SECRET`, and the Service Role key live only inside the serverless function's environment — never in frontend code.
 
 ---
 
@@ -223,9 +226,10 @@ Rules:
 * Authentication required for all private data (Supabase Auth).
 * Row Level Security policies enforce that users can access only their own records — this is the primary ownership-check mechanism in v1, replacing manual per-request checks in application code.
 * Passwords are never stored or handled manually — Supabase Auth owns credential storage.
-* Secrets (Anthropic key, email API key, Supabase service role key) live only in serverless function environment variables — never in frontend bundles.
+* Secrets (Anthropic key, Resend API key, CRON_SECRET, Supabase service role key) live only in serverless function environment variables — never in frontend bundles.
 * `.env` files must not be committed.
-* Serverless functions verify the user's session before doing any data fetch or AI/email call.
+* `/api/ai/ask` verifies the user's active session token before doing any data fetch or AI call.
+* `/api/reminders/run` verifies the `CRON_SECRET` header before processing (does not require a user session).
 * Rate limiting may be added to the AI endpoint if needed.
 * One user's data must never be included in another user's AI context — enforced by scoping every data fetch to the authenticated `user_id`.
 
@@ -241,8 +245,13 @@ Only two custom HTTP endpoints exist, both served by serverless functions:
 POST /api/ai/ask
   Body: { question: string }
   Returns: { answer: string }
+  (Authenticated via user session JWT)
 
 [scheduled, not user-facing]
+/api/reminders/run
+  Triggered daily by Supabase pg_cron
+  (Authenticated via CRON_SECRET header)
+```, not user-facing]
 /api/reminders/run
   Triggered daily by cron — no client calls this directly
 ```
@@ -328,6 +337,7 @@ VITE_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=   # server-side only, used in serverless functions
 RESEND_API_KEY=              # server-side only
 ANTHROPIC_API_KEY=           # server-side only
+CRON_SECRET=                 # server-side only
 ```
 
 Never commit real secrets to GitHub. Only `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are safe to expose to the frontend — everything else stays inside serverless function environments.

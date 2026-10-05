@@ -1,6 +1,6 @@
 # ImplementationPlan.md — WORKLEDGER
 
-A phased build order. Each phase produces something runnable/demoable before moving to the next — no phase should leave the app in a broken state for long. Built against the finalized stack: React + JavaScript + Vite, Tailwind + shadcn/ui, Supabase (Postgres + Auth + RLS), Supabase Edge Functions for AI/email, Claude API, Resend/SendGrid, Vercel deployment.
+A phased build order. Each phase produces something runnable/demoable before moving to the next — no phase should leave the app in a broken state for long. Built against the finalized stack: React + JavaScript + Vite, Tailwind + shadcn/ui, Supabase (Postgres + Auth + RLS), Supabase Edge Functions for AI/email, Claude API, Resend, Supabase pg_cron, Vercel deployment.
 
 ## Phase 0 — Project Setup
 
@@ -23,8 +23,8 @@ A phased build order. Each phase produces something runnable/demoable before mov
 
 ## Phase 2 — Database Schema + RLS
 
-- Write SQL migrations for `clients`, `projects`, `tasks`, `invoices` exactly per Schema.md (UUID PKs, `ON DELETE RESTRICT` on all four FK relationships, `NOT NULL` on `tasks.due_date`, CHECK constraints on `amount > 0` and `status` enum).
-- Apply RLS policies on all four tables (direct `user_id` check on `clients`/`projects`; join-through-`projects.user_id` check on `tasks`/`invoices`).
+- Write SQL migrations for `clients`, `projects`, `tasks`, `invoices` exactly per Schema.md (UUID PKs, `ON DELETE RESTRICT` on all four FK relationships, `NOT NULL` on `tasks.due_date`, CHECK constraints on `amount > 0` and `status` enum; NO `user_id` on `tasks` or `invoices`).
+- Apply RLS policies on all four tables (direct `user_id` check on `clients`/`projects`; join-through-`projects.user_id` check on `tasks`/`invoices`, ensuring update policies on `tasks`/`invoices` also check that new `project_id` belongs to `auth.uid()`).
 - Run `supabase db push` and confirm migrations apply cleanly.
 - Manually test RLS in the Supabase SQL editor: confirm a query as User A cannot see User B's rows.
 - **Done when:** schema is live, RLS is verified working via manual test, and this is the single source of truth going forward — no more schema changes without a new migration.
@@ -39,26 +39,26 @@ A phased build order. Each phase produces something runnable/demoable before mov
 ## Phase 4 — Projects CRUD + Status Pipeline
 
 - Build Projects Dashboard (Planning/Active/Completed columns), Add/Edit Project form, Project Detail screen shell (per AppFlow.md Section 5, Design.md Section 6).
-- Implement status changes (dropdown or drag).
+- Implement status changes (dropdown on project card).
 - Implement delete-blocked-by-tasks/invoices rule (**no cascade deletes** — confirmed in Phase 2 schema).
 - **Done when:** a user can create a project under a client, move it through all three statuses, and deletion is correctly blocked once it has tasks or invoices.
 
 ## Phase 5 — Tasks + Invoices CRUD
 
-- Build Tasks section within Project Detail: add task (title + required due date), toggle done/not done, edit/delete.
-- Build Invoices section within Project Detail: add invoice (amount, date, paid/unpaid), toggle paid status, edit/delete.
-- Add the standalone **Tasks** and **Invoices** nav screens (global, cross-project list/filter views — confirmed addition to the nav) — these query the same tables with a join to `projects` for the project name column, no schema change required.
-- **Done when:** full task and invoice lifecycle works both from within a Project Detail page and from the global Tasks/Invoices screens, and both stay in sync (same underlying data).
+- Build Tasks section within Project Detail: add task (title + required due date), toggle done/not done, edit (including Project reassignment dropdown populated with user's projects), delete.
+- Build Invoices section within Project Detail: add invoice (amount, date, paid/unpaid), toggle paid status, edit (including Project reassignment dropdown populated with user's projects), delete.
+- Add the standalone **Tasks** and **Invoices** nav screens (global, cross-project list/filter views) — these query the same tables with a join to `projects` for the project name column, no schema change required.
+- **Done when:** full task and invoice lifecycle works both from within a Project Detail page and from the global Tasks/Invoices screens (including moving items between projects), and both stay in sync (same underlying data).
 
 ## Phase 6 — Main Dashboard
 
-- Build summary cards: Active Projects, Upcoming Tasks (7-day), Total Unpaid — all computed live via Supabase queries (per Schema.md Section 8 / TechSpec.md Section 6), never cached.
-- Build Active Projects list and Upcoming Deadlines list (overdue tasks visually flagged and pinned to top).
+- Build summary cards (exactly 3): Active Projects, Upcoming Deadlines (`today <= due_date <= today + 7`), Total Unpaid — all computed live via Supabase queries (per Schema.md Section 8 / TechSpec.md Section 6), never cached.
+- Build Active Projects list and Upcoming Deadlines list (overdue tasks visually flagged in red and pinned to top).
 - **Done when:** dashboard numbers are demonstrably correct against seeded test data (e.g. seed 2 clients, 3 projects, several tasks/invoices, and manually verify each number).
 
 ## Phase 7 — Overload Warning
 
-- Implement the exact condition from TechSpec.md Section 7 / Schema.md Section 8: ≥3 incomplete tasks, spanning ≥2 distinct Active projects, within a rolling 3-day window.
+- Implement the exact condition from TechSpec.md Section 7 / Schema.md Section 8: ≥3 incomplete tasks, spanning ≥2 distinct Active projects, within the rolling 3-day window (`today <= due_date <= today + 2 days`). Overdue tasks (`due_date < today`) do not count.
 - Compute client-side from data already fetched for the dashboard (no new backend call).
 - Build the warning banner (Design.md Section 6) — session-dismissible, reappears next login if condition still holds.
 - **Done when:** the warning correctly appears and disappears against several manually-constructed test scenarios (cluster present, cluster absent, cluster in only one project — should NOT trigger).
@@ -72,9 +72,9 @@ A phased build order. Each phase produces something runnable/demoable before mov
 
 ## Phase 9 — Email Reminders
 
-- Build the `/api/reminders/run` Supabase Edge Function: query incomplete tasks with `due_date <= today + 2 days` per user, skip if none qualify, otherwise send one summary email via Resend/SendGrid.
-- Schedule via Supabase `pg_cron` (or Vercel Cron if hosting the function there instead).
-- **Done when:** manually triggering the function sends a correctly formatted email for a seeded task, and sends nothing when no tasks qualify.
+- Build the `/api/reminders/run` Supabase Edge Function: authenticate via `CRON_SECRET` header (no user session required) → query users across system with service-role key → query incomplete tasks with `due_date <= today + 2 days` per user → skip if none qualify → otherwise send one summary email via **Resend**.
+- Schedule via **Supabase pg_cron**.
+- **Done when:** manually triggering the function with the `CRON_SECRET` header sends a correctly formatted email for a seeded task, and sends nothing when no tasks qualify.
 
 ## Phase 10 — Testing Pass
 
