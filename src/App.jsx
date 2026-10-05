@@ -6,6 +6,7 @@ import LoginPage from '@/pages/auth/LoginPage'
 import SignupPage from '@/pages/auth/SignupPage'
 import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage'
 import DashboardPage from '@/pages/DashboardPage'
+import ClientsPage from '@/pages/ClientsPage'
 import HelpPage from '@/pages/HelpPage'
 import ContactPage from '@/pages/ContactPage'
 
@@ -23,7 +24,8 @@ import ContactPage from '@/pages/ContactPage'
  *   /contact          → ContactPage
  *
  * Protected routes (require authentication — ProtectedRoute guards these):
- *   /dashboard        → DashboardPage (Phase 1: placeholder only)
+ *   /dashboard        → DashboardPage
+ *   /clients          → ClientsPage (Phase 3: Clients CRUD)
  *
  * Fallback:
  *   *  →  redirect to /login
@@ -44,6 +46,7 @@ export default function App() {
         {/* Protected routes — wrapped in ProtectedRoute */}
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/clients" element={<ClientsPage />} />
         </Route>
 
         {/* Public landing page — authenticated users are redirected to /dashboard inside LandingPage */}
