@@ -9,6 +9,8 @@ import DashboardPage from '@/pages/DashboardPage'
 import ClientsPage from '@/pages/ClientsPage'
 import ProjectsPage from '@/pages/ProjectsPage'
 import ProjectDetailPage from '@/pages/ProjectDetailPage'
+import TasksPage from '@/pages/TasksPage'
+import InvoicesPage from '@/pages/InvoicesPage'
 import HelpPage from '@/pages/HelpPage'
 import ContactPage from '@/pages/ContactPage'
 
@@ -29,7 +31,9 @@ import ContactPage from '@/pages/ContactPage'
  *   /dashboard        → DashboardPage
  *   /clients          → ClientsPage (Phase 3: Clients CRUD)
  *   /projects         → ProjectsPage (Phase 4: Projects CRUD)
- *   /projects/:id     → ProjectDetailPage (Phase 4 shell)
+ *   /projects/:id     → ProjectDetailPage (Phase 4 shell, Phase 5 embedded)
+ *   /tasks            → TasksPage (Phase 5)
+ *   /invoices         → InvoicesPage (Phase 5)
  *
  * Fallback:
  *   *  →  redirect to /login
@@ -53,6 +57,8 @@ export default function App() {
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/projects/:id" element={<ProjectDetailPage />} />
+          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/invoices" element={<InvoicesPage />} />
         </Route>
 
         {/* Public landing page — authenticated users are redirected to /dashboard inside LandingPage */}

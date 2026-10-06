@@ -32,8 +32,8 @@ const NAV_ITEMS = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
   { label: 'Clients', to: '/clients', icon: Users },
   { label: 'Projects', to: '/projects', icon: FolderOpen },
-  { label: 'Tasks', to: '/tasks', icon: ListTodo, disabled: true },
-  { label: 'Invoices', to: '/invoices', icon: Receipt, disabled: true },
+  { label: 'Tasks', to: '/tasks', icon: ListTodo },
+  { label: 'Invoices', to: '/invoices', icon: Receipt },
   { label: 'AI Assistant', to: '#ai', icon: Sparkles, disabled: true },
 ]
 
