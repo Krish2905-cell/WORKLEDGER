@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { NavLink, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { signOut } from '@/lib/authService'
+import AiAssistantPanel from '@/components/AiAssistantPanel'
 import {
   LayoutDashboard,
   Users,
   FolderOpen,
   ListTodo,
   Receipt,
-  Sparkles,
+  MessageSquare,
   LogOut,
   Menu,
   X,
@@ -28,23 +29,29 @@ import {
  * - 4–6px radius, flat surfaces, zero gradients/shadows
  */
 
-const NAV_ITEMS = [
+// Regular nav links (route-based)
+const NAV_LINKS = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
   { label: 'Clients', to: '/clients', icon: Users },
   { label: 'Projects', to: '/projects', icon: FolderOpen },
   { label: 'Tasks', to: '/tasks', icon: ListTodo },
   { label: 'Invoices', to: '/invoices', icon: Receipt },
-  { label: 'AI Assistant', to: '#ai', icon: Sparkles, disabled: true },
 ]
 
 export default function AppLayout({ children }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [aiPanelOpen, setAiPanelOpen] = useState(false)
 
   async function handleLogout() {
     await signOut()
     navigate('/login', { replace: true })
+  }
+
+  function openAiPanel() {
+    setMobileNavOpen(false)
+    setAiPanelOpen(true)
   }
 
   return (
@@ -81,23 +88,8 @@ export default function AppLayout({ children }) {
         {/* Navigation Items */}
         <nav className="flex-1 py-4 flex flex-col justify-between">
           <div className="space-y-1">
-            {NAV_ITEMS.map((item) => {
+            {NAV_LINKS.map((item) => {
               const Icon = item.icon
-
-              if (item.disabled) {
-                return (
-                  <div
-                    key={item.label}
-                    className="flex items-center gap-3 px-6 py-2.5 text-xs font-medium cursor-not-allowed opacity-40 select-none"
-                    style={{ color: '#6B7078' }}
-                    title="Available in upcoming phase"
-                  >
-                    <Icon size={16} />
-                    <span>{item.label}</span>
-                  </div>
-                )
-              }
-
               return (
                 <NavLink
                   key={item.label}
@@ -120,6 +112,16 @@ export default function AppLayout({ children }) {
                 </NavLink>
               )
             })}
+            {/* AI Assistant — opens slide-over panel, not a route */}
+            <button
+              onClick={openAiPanel}
+              aria-label="Open AI Assistant"
+              className="flex w-full items-center gap-3 px-6 py-2.5 text-xs font-medium border-l-4 border-transparent transition-colors hover:bg-[#F0EFEC]"
+              style={{ color: aiPanelOpen ? '#1F3D3A' : '#6B7078' }}
+            >
+              <MessageSquare size={16} aria-hidden="true" />
+              <span>AI Assistant</span>
+            </button>
           </div>
 
           {/* User & Logout section */}
@@ -179,20 +181,8 @@ export default function AppLayout({ children }) {
           className="md:hidden px-6 py-4 flex flex-col gap-2 z-20"
           style={{ backgroundColor: '#FAFAF8', borderBottom: '1px solid #E3E1DC' }}
         >
-          {NAV_ITEMS.map((item) => {
+          {NAV_LINKS.map((item) => {
             const Icon = item.icon
-            if (item.disabled) {
-              return (
-                <div
-                  key={item.label}
-                  className="flex items-center gap-3 py-2 text-xs font-medium opacity-40 select-none"
-                  style={{ color: '#6B7078' }}
-                >
-                  <Icon size={16} />
-                  <span>{item.label}</span>
-                </div>
-              )
-            }
             return (
               <NavLink
                 key={item.label}
@@ -209,6 +199,15 @@ export default function AppLayout({ children }) {
               </NavLink>
             )
           })}
+          {/* AI Assistant — mobile */}
+          <button
+            onClick={openAiPanel}
+            className="flex items-center gap-3 py-2 text-xs text-[#6B7078]"
+            aria-label="Open AI Assistant"
+          >
+            <MessageSquare size={16} aria-hidden="true" />
+            <span>AI Assistant</span>
+          </button>
           <div className="pt-3 mt-2" style={{ borderTop: '1px solid #E3E1DC' }}>
             <button
               onClick={handleLogout}
@@ -227,6 +226,12 @@ export default function AppLayout({ children }) {
           {children}
         </div>
       </main>
+
+      {/* ── AI Assistant slide-over panel ────────────────────────────────── */}
+      <AiAssistantPanel
+        isOpen={aiPanelOpen}
+        onClose={() => setAiPanelOpen(false)}
+      />
     </div>
   )
 }

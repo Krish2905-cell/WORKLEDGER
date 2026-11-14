@@ -18,4 +18,15 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  // Supabase Edge Functions run in Deno — declare Deno as a known global
+  // so ESLint doesn't flag Deno.serve, Deno.env, etc. as undefined.
+  {
+    files: ['supabase/functions/**/*.js'],
+    languageOptions: {
+      globals: {
+        Deno: 'readonly',
+      },
+    },
+  },
 ])
+
