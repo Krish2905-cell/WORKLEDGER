@@ -1,7 +1,9 @@
 # WORKLEDGER — Technical Specification (TechSpec)
 
 **Version:** 1.2
+
 **Status:** Finalized for v1 build
+
 **Related:** PRD.md, Schema.md, AppFlow.md
 
 ## 1. Stack
@@ -11,10 +13,8 @@ Frontend        React + JavaScript + Vite
 Styling         Tailwind CSS
 UI              shadcn/ui
 Backend/DB/Auth Supabase (PostgreSQL + Auth + Row Level Security)
-Serverless      Supabase Edge Functions — AI + Email only
-Email           Resend
-Scheduler       Supabase pg_cron
-AI              Anthropic Claude API
+Serverless      Supabase Edge Functions — AI only
+AI              Gemini API
 Testing         Vitest
 Versioning      Git + GitHub
 Deployment      Vercel + Supabase
@@ -33,9 +33,8 @@ React Frontend
       |         used for: all Client / Project / Task / Invoice CRUD
       |
       |-- HTTPS calls --> Serverless Edge Functions
-                |
-                |-- /api/ai/ask         --> Anthropic Claude API (session verified)
-                |-- /api/reminders/run  --> Resend (daily pg_cron trigger with CRON_SECRET)
+                         |
+                         |-- /api/ai/ask --> Gemini API (session verified)
 ```
 
 External services:
@@ -43,11 +42,10 @@ External services:
 ```text
 Supabase Auth   → Authentication
 Supabase RLS    → Per-user data isolation (replaces manual ownership checks in app code)
-Resend          → Email reminders
-Claude API      → AI assistant
+Gemini API      → AI assistant
 ```
 
-Frontend never holds the Anthropic, Resend, or CRON_SECRET API keys — those exist only inside the serverless functions. Frontend never connects to PostgreSQL directly, only through Supabase's client library, which itself enforces RLS.
+Frontend never holds the Gemini API key or Supabase Service Role key — those exist only inside the serverless functions. Frontend never connects to PostgreSQL directly, only through Supabase's client library, which itself enforces RLS.
 
 ---
 
@@ -85,6 +83,7 @@ Detailed table definitions live in Schema.md.
 `clients` and `projects` tables contain a `user_id` column referencing `auth.users`.
 
 `tasks` and `invoices` tables do **not** have a `user_id` column. Their user ownership is established strictly through their parent project:
+
 * `tasks.project_id -> projects.user_id`
 * `invoices.project_id -> projects.user_id`
 
@@ -128,6 +127,7 @@ Users can access only their own:
 ## 6. Dashboard Logic
 
 The dashboard features exactly 3 summary cards:
+
 1. **Active Projects** = Projects where status = Active
 2. **Upcoming Deadlines** = Incomplete tasks (`is_done = false`) due from today through today + 7 days (`today <= due_date <= today + 7 days`)
 3. **Total Unpaid Amount** = SUM(amount where invoice status = Unpaid)
@@ -152,6 +152,7 @@ Tasks due within a rolling 3-day window:
 ```
 
 Rules:
+
 * Only incomplete tasks (`is_done = false`) are considered.
 * Tasks must belong to at least 2 distinct `Active` projects. Tasks in `Planning` or `Completed` projects do not count.
 * Overdue tasks from before today (`due_date < today`) do **NOT** count toward the overload calculation.
@@ -166,22 +167,7 @@ It must not:
 
 ---
 
-## 8. Email Reminders
-
-A scheduled **serverless function** (triggered by Supabase pg_cron) runs once daily at a fixed time.
-
-It will:
-
-* Authenticate via a pre-shared **`CRON_SECRET`** header provided by pg_cron (does **not** require a logged-in user session).
-* Query, per user via the Supabase Service Role key, incomplete tasks with `due_date <= today + 2 days` (this naturally includes overdue tasks).
-* Skip the user if no relevant tasks exist.
-* Otherwise build one summary email (task title, project name, due date) and send it via **Resend**.
-
-Email credentials (`RESEND_API_KEY`), `CRON_SECRET`, and the Service Role key live only inside the serverless function's environment — never in frontend code.
-
----
-
-## 9. AI Assistant
+## 8. AI Assistant
 
 The AI assistant is read-only in v1.
 
@@ -196,7 +182,7 @@ Fetch user's data via Supabase (service role key, server-side only)
       ↓
 Build context (system instructions + user data + question)
       ↓
-Claude API
+Gemini API
       ↓
 Return Answer
 ```
@@ -212,7 +198,7 @@ The assistant may answer questions such as:
 Rules:
 
 * AI requests are processed only through the serverless function — never client-side.
-* The Anthropic API key must never be exposed to the frontend.
+* The Gemini API key must never be exposed to the frontend.
 * The AI can access only the current user's data.
 * The AI cannot create, edit, or delete records.
 * The AI must not invent missing information.
@@ -221,44 +207,35 @@ Rules:
 
 ---
 
-## 10. Security
+## 9. Security
 
 * Authentication required for all private data (Supabase Auth).
 * Row Level Security policies enforce that users can access only their own records — this is the primary ownership-check mechanism in v1, replacing manual per-request checks in application code.
 * Passwords are never stored or handled manually — Supabase Auth owns credential storage.
-* Secrets (Anthropic key, Resend API key, CRON_SECRET, Supabase service role key) live only in serverless function environment variables — never in frontend bundles.
+* Secrets (Gemini API key, Supabase service role key) live only in serverless function environment variables — never in frontend bundles.
 * `.env` files must not be committed.
 * `/api/ai/ask` verifies the user's active session token before doing any data fetch or AI call.
-* `/api/reminders/run` verifies the `CRON_SECRET` header before processing (does not require a user session).
 * Rate limiting may be added to the AI endpoint if needed.
 * One user's data must never be included in another user's AI context — enforced by scoping every data fetch to the authenticated `user_id`.
 
 ---
 
-## 11. API Surface
+## 10. API Surface
 
 Standard CRUD (Clients, Projects, Tasks, Invoices, Dashboard) is handled by **direct Supabase client calls from the frontend** — see Schema.md for the full column-level shape of each table. There are no hand-written Express routes for these, so there is no separate request/response contract beyond what Schema.md already defines.
 
-Only two custom HTTP endpoints exist, both served by serverless functions:
+Only one custom HTTP endpoint exists, served by a serverless function:
 
 ```text
 POST /api/ai/ask
   Body: { question: string }
   Returns: { answer: string }
   (Authenticated via user session JWT)
-
-[scheduled, not user-facing]
-/api/reminders/run
-  Triggered daily by Supabase pg_cron
-  (Authenticated via CRON_SECRET header)
-```, not user-facing]
-/api/reminders/run
-  Triggered daily by cron — no client calls this directly
 ```
 
 ---
 
-## 12. Code Structure
+## 11. Code Structure
 
 Since there's no custom backend for CRUD, the codebase is simpler than a traditional REST-API project:
 
@@ -276,15 +253,14 @@ supabase/
  ├── migrations/                  (SQL schema, version-controlled)
  ├── policies/                    (RLS policy definitions)
  └── functions/
-      ├── ai-ask/                 (serverless function: AI chat)
-      └── reminders-run/          (serverless function: daily email job)
+      └── ai-ask/                 (serverless function: AI chat)
 ```
 
 Keep business logic (overload warning calculation, dashboard aggregation) in small, testable utility functions under `src/lib/` or `src/utils/` — not scattered inside UI components.
 
 ---
 
-## 13. Testing
+## 12. Testing
 
 Test critical application logic:
 
@@ -296,7 +272,6 @@ Test critical application logic:
 * Invoice status updates and unpaid-total calculation
 * Dashboard aggregation values
 * Overload warning trigger conditions
-* Email reminder filtering logic (which tasks qualify)
 * AI user-data isolation (no cross-user leakage in context)
 * Invalid input handling on all forms
 
@@ -304,7 +279,7 @@ Data isolation and business correctness matter more than test count — prioriti
 
 ---
 
-## 14. Development
+## 13. Development
 
 Database schema changes are managed through Supabase's SQL migrations (version-controlled in `supabase/migrations/`).
 
@@ -315,7 +290,6 @@ npm install
 npm run dev
 supabase db push          # apply migrations
 supabase functions deploy ai-ask
-supabase functions deploy reminders-run
 npm test
 npm run build
 ```
@@ -328,23 +302,21 @@ Use:
 
 ---
 
-## 15. Environment Variables
+## 14. Environment Variables
 
 ```env
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 
 SUPABASE_SERVICE_ROLE_KEY=   # server-side only, used in serverless functions
-RESEND_API_KEY=              # server-side only
-ANTHROPIC_API_KEY=           # server-side only
-CRON_SECRET=                 # server-side only
+GEMINI_API_KEY=              # server-side only
 ```
 
 Never commit real secrets to GitHub. Only `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are safe to expose to the frontend — everything else stays inside serverless function environments.
 
 ---
 
-## 16. Future Compatibility
+## 15. Future Compatibility
 
 The architecture should leave room for:
 
@@ -363,6 +335,6 @@ These features should not complicate the MVP.
 
 ---
 
-## 17. Technical Principle
+## 16. Technical Principle
 
 > **Build the simplest architecture that keeps freelancer data secure, deadlines visible, invoices accurate, and the application maintainable.**
