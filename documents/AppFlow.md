@@ -23,7 +23,6 @@ flowchart TD
     T -.->|same underlying data| H
     V -.->|same underlying data| I
     D -->|deadline cluster detected| J[Overload Warning Banner]
-    K[Supabase pg_cron Job] -.->|daily with CRON_SECRET| L[Reminder Email via Resend]
 ```
 
 ## 2. Auth Flow
@@ -42,7 +41,7 @@ flowchart TD
 
 The landing page after login. Shows, top to bottom:
 
-1. **Overload Warning banner** (only rendered if a cluster is detected: $\ge 3$ incomplete tasks due within the rolling 3-day window `today` through `today + 2 days` across $\ge 2$ distinct `Active` projects; overdue tasks excluded) — e.g. "⚠ 4 tasks due within 3 days across 3 active projects." Clicking it scrolls to / filters the Upcoming Deadlines section. Dismissible for the session via "×".
+1. **Overload Warning banner** (only rendered if a cluster is detected: ≥ 3 incomplete tasks due within the rolling 3-day window `today` through `today + 2 days` across ≥ 2 distinct `Active` projects; overdue tasks excluded) — e.g. "⚠ 4 tasks due within 3 days across 3 active projects." Clicking it scrolls to / filters the Upcoming Deadlines section. Dismissible for the session via "×".
 2. **Summary cards** (exactly 3 across on desktop, stacked on mobile):
    - **Active Projects** (count of projects where status = Active)
    - **Upcoming Deadlines** (count of incomplete tasks due from today through today + 7 days)
@@ -75,6 +74,7 @@ The landing page after login. Shows, top to bottom:
 Tasks and invoices are each manageable in two places, both reading/writing the same underlying data:
 
 **Inline on Project Detail** (scoped to one project):
+
 - Add task: title + due date → appears in the project's task list.
 - Toggle done/not done: single click/checkbox, updates immediately (optimistic UI acceptable).
 - Edit task: dialog/form allowing updates to title, due date, and **Project reassignment** (dropdown populated with the current user's projects). This allows tasks to be moved to another project before deleting the parent project. Reassigning to another user's project is blocked.
@@ -82,11 +82,13 @@ Tasks and invoices are each manageable in two places, both reading/writing the s
 - Add/edit/delete invoice the same way: Invoices section of Project Detail. Editing an invoice includes amount, date, paid status, and **Project reassignment** (dropdown of user's projects).
 
 **Global Tasks screen** (`/tasks`, cross-project):
+
 - Flat list of every task across every project, with the parent project name shown per row (clickable → Project Detail).
 - Filter/sort by due date, done/not done, and project.
 - Same add/toggle/edit/delete actions as the inline version (including Project dropdown on edit).
 
 **Global Invoices screen** (`/invoices`, cross-project):
+
 - Flat list of every invoice across every project, with the parent project name shown per row (clickable → Project Detail).
 - Filter/sort by paid/unpaid status and date.
 - Same add/toggle/edit/delete actions as the inline version (including Project dropdown on edit).
@@ -97,11 +99,10 @@ Tasks feed the Main Dashboard's "Upcoming Deadlines" and the Overload Warning lo
 
 1. Opens as a **slide-over panel or modal** (not a full page navigation) so the user can ask a question without losing their place — accessible from any authenticated screen via nav item or floating button.
 2. Simple chat UI: message history (user + assistant turns), text input, "Send" button.
-3. On send: frontend sends the question to `/api/ai/ask`; backend verifies user session, fetches the current user's data from Supabase, packages it as context, and calls the Claude API; returns answer and renders in the chat panel.
+3. On send: frontend sends the question to `/api/ai/ask`; backend verifies user session, fetches the current user's data from Supabase, packages it as context, and calls the **Gemini API**; returns answer and renders in the chat panel.
 4. Assistant answers only — no buttons to create/edit records from chat in v1.
 5. Chat history does not need to persist across sessions in v1 (in-memory for the session is sufficient).
 6. Empty state: a few suggested example questions shown before the user's first message (e.g. "How much am I owed?", "What's due this week?").
-
 
 ## 8. Error / Empty States (applies across screens)
 
