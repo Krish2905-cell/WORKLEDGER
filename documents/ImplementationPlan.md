@@ -1,6 +1,6 @@
 # ImplementationPlan.md — WORKLEDGER
 
-A phased build order. Each phase produces something runnable/demoable before moving to the next — no phase should leave the app in a broken state for long. Built against the finalized stack: React + JavaScript + Vite, Tailwind + shadcn/ui, Supabase (Postgres + Auth + RLS), Supabase Edge Functions for AI/email, Claude API, Resend, Supabase pg_cron, Vercel deployment.
+A phased build order. Each phase produces something runnable/demoable before moving to the next — no phase should leave the app in a broken state for long. Built against the finalized stack: React + JavaScript + Vite, Tailwind + shadcn/ui, Supabase (Postgres + Auth + RLS), Supabase Edge Functions for AI, Gemini API, Vercel deployment.
 
 ## Phase 0 — Project Setup
 
@@ -65,30 +65,24 @@ A phased build order. Each phase produces something runnable/demoable before mov
 
 ## Phase 8 — AI Chat Assistant
 
-- Build the `/api/ai/ask` Supabase Edge Function: verify session → fetch user's data with the service-role key (server-side only) → build context → call Claude API → return answer.
+- Build the `/api/ai/ask` Supabase Edge Function: verify session → fetch user's data with the service-role key (server-side only) → build context → call Gemini API → return answer.
 - Build the AI Chat panel UI (slide-over `Sheet`, per Design.md Section 6) with suggested-question chips on empty state.
 - Enforce: read-only, no cross-user data, clear error surfaced on AI service failure, no chat history persistence required.
 - **Done when:** the assistant correctly answers the five example questions from TechSpec.md Section 9 against seeded test data, and cannot access another test user's data (verify with two accounts).
 
-## Phase 9 — Email Reminders
+## Phase 9 — Testing Pass
 
-- Build the `/api/reminders/run` Supabase Edge Function: authenticate via `CRON_SECRET` header (no user session required) → query users across system with service-role key → query incomplete tasks with `due_date <= today + 2 days` per user → skip if none qualify → otherwise send one summary email via **Resend**.
-- Schedule via **Supabase pg_cron**.
-- **Done when:** manually triggering the function with the `CRON_SECRET` header sends a correctly formatted email for a seeded task, and sends nothing when no tasks qualify.
-
-## Phase 10 — Testing Pass
-
-- Follow the priority order from TechSpec.md Section 13: RLS isolation first, then CRUD, then delete-blocking, then overdue/unpaid calculations, then overload warning, then email filtering, then AI isolation, then invalid-input handling.
+- Follow the priority order from TechSpec.md Section 13: RLS isolation first, then CRUD, then delete-blocking, then overdue/unpaid calculations, then overload warning, then AI isolation, then invalid-input handling.
 - Write Vitest tests for the pure business-logic utilities (overload calculation, dashboard aggregation, date filtering) living in `src/lib`/`src/utils` — these are the easiest to test in isolation and the most likely to have off-by-one bugs (e.g. "due today" boundary, rolling window edges).
 - **Done when:** the Section 13 priority list has at least one passing test each, with RLS isolation and delete-blocking tests given the most scrutiny (per TechSpec.md: "the one thing that's genuinely dangerous to get wrong").
 
-## Phase 11 — Polish + Deployment
+## Phase 10 — Polish + Deployment
 
 - Responsive pass across all screens (Design.md Section 8).
 - Empty states pass (Design.md Section 7 / AppFlow.md Section 9).
 - Environment variable validation — fail fast on missing keys (TechSpec.md Section 14).
-- Deploy frontend to Vercel, confirm Edge Functions are deployed (`supabase functions deploy ai-ask`, `supabase functions deploy reminders-run`).
-- Final smoke test on the deployed URL: signup → full CRUD loop → dashboard → AI chat → manually trigger reminder function.
+- Deploy frontend to Vercel, confirm the AI Edge Function is deployed (`supabase functions deploy ai-ask`).
+- Final smoke test on the deployed URL: signup → full CRUD loop → dashboard → AI chat.
 - **Done when:** the deployed app, not just localhost, passes the full smoke test end to end.
 
 ## Sequencing Notes
@@ -97,5 +91,5 @@ A phased build order. Each phase produces something runnable/demoable before mov
 - Phases 3–5 (Clients → Projects → Tasks/Invoices) follow the natural FK dependency order — you can't create a project without a client, or a task without a project.
 - Phase 6 (Dashboard) depends on Phases 3–5 being functional, since it aggregates their data.
 - Phase 7 (Overload Warning) depends on Phase 6's task-fetching logic already being in place.
-- Phases 8 and 9 (AI, Email) are independent of each other and can be built in either order, or in parallel, once Phase 6 exists — both just read the same data Phase 6 already queries.
-- Phase 10 (Testing) is written as a single late phase here for clarity, but in practice, write tests for each phase's business logic as you finish that phase, not all at the end — the plan groups it at the end only to describe *coverage priority*, not literal timing.
+- Phase 8 (AI Chat Assistant) depends on Phase 6 because it uses the same user data for context.
+- Phase 9 (Testing) is written as a single late phase here for clarity, but in practice, write tests for each phase's business logic as you finish that phase, not all at the end — the plan groups it at the end only to describe *coverage priority*, not literal timing.
