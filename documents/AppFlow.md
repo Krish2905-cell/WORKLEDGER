@@ -102,17 +102,8 @@ Tasks feed the Main Dashboard's "Upcoming Deadlines" and the Overload Warning lo
 5. Chat history does not need to persist across sessions in v1 (in-memory for the session is sufficient).
 6. Empty state: a few suggested example questions shown before the user's first message (e.g. "How much am I owed?", "What's due this week?").
 
-## 8. Automated Email Reminders (no UI screen — background flow)
 
-1. A scheduled cron job runs daily via **Supabase pg_cron**.
-2. Trigger calls `/api/reminders/run` with a secret **`CRON_SECRET`** header (no user session required).
-3. The function uses the Supabase Service Role key server-side to query users across the system.
-4. For each user, it queries incomplete tasks with `due_date <= today + 2 days` (which naturally includes overdue tasks) where `is_done = false`.
-5. If the result set is non-empty, it sends one summary email per user via **Resend** listing each task, its due date, and its project name.
-6. If the result set is empty, no email is sent that day.
-7. This flow has no in-app screen; it is entirely automated and delivered outside the app to the user's inbox.
-
-## 9. Error / Empty States (applies across screens)
+## 8. Error / Empty States (applies across screens)
 
 - **No clients yet**: Clients List shows an empty state with a prompt to add the first client.
 - **No projects yet**: Projects Dashboard shows an empty state with a prompt to add the first project (disabled/hinted if no clients exist yet, since a project requires a client).
